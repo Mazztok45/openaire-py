@@ -748,7 +748,14 @@ class OpenAIRE:
 )
 @click.option("--author", help="Filter research products by author full name")
 @click.option("--pid", help="Filter by persistent identifier (DOI, ROR, etc.)")
-@click.option("--funder", help="Filter projects by funder short name")
+@click.option(
+    "--funder",
+    type=click.Choice(
+        ["WT", "EC", "ARC", "ANDS", "NSF", "FCT", "NHMRC"], case_sensitive=False
+    ),
+    help="Filter projects by funder short name.",
+)
+@click.option("--project", help="Filter projects by project ID")
 @click.option("--country", help="Filter products/organizations by country code")
 @click.option("--sort", help="Sort field (e.g., 'popularity DESC', 'startDate ASC')")
 @click.option(
@@ -767,6 +774,7 @@ def main(
     author: str | None,
     pid: str | None,
     funder: str | None,
+    project: str | None,
     country: str | None,
     sort: str | None,
     page_size: int,
@@ -787,6 +795,8 @@ def main(
             query.author_full_name(author)
         if pid:
             query.pid(pid)
+        if project:
+            query.related_project_code(project)
         if country:
             query.country_code(country)
         # Add more specific filters for research products if needed
