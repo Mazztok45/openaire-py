@@ -3,8 +3,9 @@
 ## Overview
 
 This script provides a command-line interface (CLI) client to interact with the
-OpenAIRE Graph API. It allows users to query different entities like research
-products, organizations, data sources, and projects, applying various filters and sorting options.
+[OpenAIRE Graph API](https://graph.openaire.eu/docs/apis/graph-api/). It allows users to
+query different entities like research products, organizations, data sources, and
+projects, applying various filters and sorting options.
 
 The client handles API requests, pagination using cursors, and provides a
 structured way to build complex queries.
@@ -57,10 +58,10 @@ implemented options.
         --author "John Doe"
     ```
 
-* **Find projects funded by 'ERC'**:
+* **Find projects funded by 'EC' (European Commission)**:
     ```bash
     ./client.py --entity projects \
-        --funder ERC
+        --funder EC
     ```
 
 * **Find research products with a specific PID (e.g., DOI)**:
@@ -138,21 +139,41 @@ recent_publications = (
 # Print basic info from the first page
 print(f"Found {recent_publications.get('header', {}).get('numFound', 0)} total results.")
 if recent_publications.get("results"):
-    print("First few results:")
+    print("First few results (bibliographic info):")
     for pub in recent_publications["results"]:
-         # Accessing nested data safely
-        title_info = pub.get('metadata', {}).get('oaf:result', {}).get('title', [{}])[0]
-        title = title_info.get('$', 'No Title')
-        pid_info = pub.get('metadata', {}).get('oaf:result', {}).get('pid', [{}])[0]
-        pid = pid_info.get('$', 'No PID')
-        print(f"- Title: {title} (PID: {pid})")
+        # Extract bibliographic details
+        title = pub.get('mainTitle', 'No Title')
+
+        # Extract author full names
+        authors_list = pub.get('authors', [])
+        author_names = [author.get('fullName', 'N/A') for author in authors_list]
+        authors_str = "; ".join(author_names)
+
+        # Extract PIDs (scheme:value)
+        pid_list = pub.get('pids', [])
+        pids_str_list = []
+        for pid_entry in pid_list:
+            scheme = pid_entry.get('scheme', 'N/A')
+            value = pid_entry.get('value', 'N/A')
+            pids_str_list.append(f"{scheme}:{value}")
+        pids_str = ", ".join(pids_str_list) if pids_str_list else "No PIDs"
+
+        # Extract publication year
+        pub_date = pub.get('publicationDate', 'N/A')
+        pub_year = pub_date.split('-')[0] if pub_date != 'N/A' and '-' in pub_date else pub_date
+
+        print(f"- Title: {title}")
+        print(f"  Authors: {authors_str}")
+        print(f"  Year: {pub_year}")
+        print(f"  PIDs: {pids_str}")
+        print("---")
 else:
     print("No results found for this page.")
 
 
 # --- Example 2: Get all publications from a specific author (ORCID) ---
 print("\n--- Example 2: All publications by author ORCID ---")
-author_orcid = "0000-0002-1825-0097" # Example ORCID
+author_orcid = "0000-0002-5082-6404" # Example ORCID
 product_query_author = ResearchProductsQuery(client)
 all_author_pubs = (
     product_query_author.author_orcid(author_orcid)
@@ -182,7 +203,7 @@ try:
         if page.items:
             first_org = page.items[0]
             # Adjust path based on actual API response structure for organizations
-            org_name = first_org.get('metadata', {}).get('oaf:entity', {}).get('legalname', 'N/A')
+            org_name = first_org.get('legalName', 'N/A')
             print(f"    First org on page: {org_name}")
         page_num += 1
         if page_num > 3: # Limit to first 3 pages for demonstration
@@ -195,18 +216,23 @@ except Exception as e:
 
 
 # --- Example 4: Find datasets related to a specific EU project code ---
-print("\n--- Example 4: Datasets related to project code 'FP7-123456' ---")
-project_code = "FP7-123456" # Example project code
-product_query_project = ResearchProductsQuery(client)
+print("\n--- Example 4: Datasets related to project code for 'OpenAIRE-NEXUS' ---")
+product_query_project = (
+    ResearchProductsQuery(client)
+    .type("dataset")
+    .related_project_funding_short_name("EC")
+    .related_project_code("101017452")
+)
 
 # Using the context manager for iteration
-print(f"Iterating through dataset pages for project {project_code}:")
+print(f"Iterating through dataset pages for project OpenAIRE-NEXUS:")
 try:
-    with product_query_project.type("dataset").related_project_code(project_code).iterate_pages() as pages:
+    with product_query_project.iterate_pages() as pages:
         page_count = 0
         for page in pages:
             page_count += 1
             print(f"  Dataset Page {page_count}: {len(page.items)} items.")
+            print (f"  First item on page: {page.items[0].get('mainTitle', 'No Title')}")
             # Process page.items
             if page_count >= 2: # Limit for demo
                 print("    (Stopping after 2 pages for demo)")
