@@ -14,28 +14,28 @@ import re
 import json
 
 
-def query_openaire(query, path='output.json'):
+def query_openaire(query_str, path_str):
     """
     Queries the OpenAIRE API for publications, filters them based on the presence
     of all query words in the title, keywords, OR description, and saves the results to a JSON file.
 
     Args:
-        query (str): The search query string.
-        path (str): The file path to save the JSON results.
+        query_str (str): The search query string.
+        path_str (str): The file path to save the JSON results.
     """
     # Pre-process the query: lowercase and split into words
-    query_words = query.lower().split()
+    query_words = query_str.lower().split()
 
     # Perform the search
     recent_publications = (
-        product_query.search(query)
+        product_query.search(query_str)
         .type("publication")
         .best_open_access_right("OPEN")
         .sort_by_publication_date(ascending=False)
         .all()
     )
 
-    print(f"Total results fetched for '{query}': {len(recent_publications)}")
+    print(f"Total results fetched for '{query_str}': {len(recent_publications)}")
 
     filtered_recent_publications = []
 
@@ -50,15 +50,18 @@ def query_openaire(query, path='output.json'):
             filtered_recent_publications.append(pub)
             continue  # No need to check keywords/abstract if title is a perfect match
 
-        # 2. Check Keywords
+        # 2. Check Keywords - FIXED: Handle subjects being None
         keyword_match = False
-        subjects = pub.get("subjects", [])
+        subjects = pub.get("subjects")  # Get the value, could be None or a list
         keyword_texts = []
-        for subject_obj in subjects:
-            # Extract the keyword value, handle different structures safely
-            subject_value = subject_obj.get("subject", {}).get("value", "")
-            if subject_value:
-                keyword_texts.append(subject_value.lower())
+
+        # Safe iteration: only loop if subjects is a list
+        if isinstance(subjects, list):
+            for subject_obj in subjects:
+                # Extract the keyword value, handle different structures safely
+                subject_value = subject_obj.get("subject", {}).get("value", "")
+                if subject_value:
+                    keyword_texts.append(subject_value.lower())
 
         # Create a single string of all keywords and check for words
         all_keywords_text = " ".join(keyword_texts)
@@ -69,10 +72,12 @@ def query_openaire(query, path='output.json'):
             filtered_recent_publications.append(pub)
             continue
 
-        # 3. Check Description/Abstract
+        # 3. Check Description/Abstract - FIXED: Handle descriptions being None or empty
         description_match = False
-        descriptions = pub.get("descriptions", [])
-        if descriptions:  # Check if the descriptions list exists and is not empty
+        descriptions = pub.get("descriptions")
+
+        # Check if descriptions exists, is a list, and is not empty
+        if isinstance(descriptions, list) and len(descriptions) > 0:
             # Use the first description (usually the abstract)
             primary_description = descriptions[0].lower()
             description_words = re.findall(r'\w+', primary_description)
@@ -84,9 +89,11 @@ def query_openaire(query, path='output.json'):
 
     print(f"Filtered results (Title OR Keywords OR Abstract): {len(filtered_recent_publications)}")
 
-    # Export to JSON file
-    with open(path, 'w', encoding='utf-8') as f:
-        return json.dump(filtered_recent_publications, f, indent=2, ensure_ascii=False)
+    # Export to JSON file and return the list
+    with open(path_str, 'w', encoding='utf-8') as f:
+        json.dump(filtered_recent_publications, f, indent=2, ensure_ascii=False)
+
+    return filtered_recent_publications
 
 ### Queries
 queries = ["research software metadata",
@@ -122,7 +129,7 @@ for query in queries:
     filename = f"{query.replace(' ', '_')}.json"
     path = Path("./openaire-data-harvested") / filename
     if not Path(path).is_dir():
-        query_openaire(query, path)
+        query_openaire(query_str=query, path_str=path)
 
 
 
