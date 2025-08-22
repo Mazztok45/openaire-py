@@ -10,7 +10,23 @@ client = OpenAIREClient()
 # --- Example : Find recent open access publications about 'research software metadata' ---
 
 product_query = ResearchProductsQuery(client)
-def query_openaire(query):
+import re
+import json
+
+
+def query_openaire(query, path='output.json'):
+    """
+    Queries the OpenAIRE API for publications, filters them based on the presence
+    of all query words in the title, keywords, OR description, and saves the results to a JSON file.
+
+    Args:
+        query (str): The search query string.
+        path (str): The file path to save the JSON results.
+    """
+    # Pre-process the query: lowercase and split into words
+    query_words = query.lower().split()
+
+    # Perform the search
     recent_publications = (
         product_query.search(query)
         .type("publication")
@@ -19,29 +35,60 @@ def query_openaire(query):
         .all()
     )
 
-    print(f"Total results fetched: {len(recent_publications)}")
-
+    print(f"Total results fetched for '{query}': {len(recent_publications)}")
 
     filtered_recent_publications = []
 
     for pub in recent_publications:
+        # 1. Check Title (your original strict method)
         title = pub.get("mainTitle", "").lower()
-
-        # Remove punctuation and split into words for more accurate matching
         title_words = re.findall(r'\w+', title)
+        title_match = all(word in title_words for word in query_words)
 
-        # Check if all query words are present in the title words
-        if all(word in title_words for word in query_words):
+        # If it's a direct title match, add it and skip other checks (for efficiency)
+        if title_match:
             filtered_recent_publications.append(pub)
+            continue  # No need to check keywords/abstract if title is a perfect match
 
-    print(f"Filtered results: {len(filtered_recent_publications)}")
+        # 2. Check Keywords
+        keyword_match = False
+        subjects = pub.get("subjects", [])
+        keyword_texts = []
+        for subject_obj in subjects:
+            # Extract the keyword value, handle different structures safely
+            subject_value = subject_obj.get("subject", {}).get("value", "")
+            if subject_value:
+                keyword_texts.append(subject_value.lower())
 
+        # Create a single string of all keywords and check for words
+        all_keywords_text = " ".join(keyword_texts)
+        keyword_words = re.findall(r'\w+', all_keywords_text)
+        keyword_match = all(word in keyword_words for word in query_words)
 
+        if keyword_match:
+            filtered_recent_publications.append(pub)
+            continue
+
+        # 3. Check Description/Abstract
+        description_match = False
+        descriptions = pub.get("descriptions", [])
+        if descriptions:  # Check if the descriptions list exists and is not empty
+            # Use the first description (usually the abstract)
+            primary_description = descriptions[0].lower()
+            description_words = re.findall(r'\w+', primary_description)
+            description_match = all(word in description_words for word in query_words)
+
+        if description_match:
+            filtered_recent_publications.append(pub)
+            # No continue needed, this is the last check
+
+    print(f"Filtered results (Title OR Keywords OR Abstract): {len(filtered_recent_publications)}")
 
     # Export to JSON file
     with open(path, 'w', encoding='utf-8') as f:
         return json.dump(filtered_recent_publications, f, indent=2, ensure_ascii=False)
 
+### Queries
 queries = ["research software metadata",
            "scientific software metadata",
            "software citation metadata",
@@ -74,5 +121,8 @@ for query in queries:
     # Export path
     filename = f"{query.replace(' ', '_')}.json"
     path = Path("./openaire-data-harvested") / filename
-    if not Path('new_folder').is_dir():
-        query_openaire(query)
+    if not Path(path).is_dir():
+        query_openaire(query, path)
+
+
+
