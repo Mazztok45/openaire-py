@@ -30,7 +30,7 @@ def query_openaire(query_str, path_str):
     recent_publications = (
         product_query.search(query_str)
         .type("publication")
-        .best_open_access_right("OPEN")
+        .best_open_access_right("OPEN").is_peer_reviewed()
         .sort_by_publication_date(ascending=False)
         .all()
     )
@@ -72,22 +72,22 @@ def query_openaire(query_str, path_str):
             filtered_recent_publications.append(pub)
             continue
 
-        # 3. Check Description/Abstract - FIXED: Handle descriptions being None or empty
-        description_match = False
-        descriptions = pub.get("descriptions")
+        # # 3. Check Description/Abstract - FIXED: Handle descriptions being None or empty
+        # description_match = False
+        # descriptions = pub.get("descriptions")
+        #
+        # # Check if descriptions exists, is a list, and is not empty
+        # if isinstance(descriptions, list) and len(descriptions) > 0:
+        #     # Use the first description (usually the abstract)
+        #     primary_description = descriptions[0].lower()
+        #     description_words = re.findall(r'\w+', primary_description)
+        #     description_match = all(word in description_words for word in query_words)
+        #
+        # if description_match:
+        #     filtered_recent_publications.append(pub)
+        #     # No continue needed, this is the last check
 
-        # Check if descriptions exists, is a list, and is not empty
-        if isinstance(descriptions, list) and len(descriptions) > 0:
-            # Use the first description (usually the abstract)
-            primary_description = descriptions[0].lower()
-            description_words = re.findall(r'\w+', primary_description)
-            description_match = all(word in description_words for word in query_words)
-
-        if description_match:
-            filtered_recent_publications.append(pub)
-            # No continue needed, this is the last check
-
-    print(f"Filtered results (Title OR Keywords OR Abstract): {len(filtered_recent_publications)}")
+    print(f"Filtered results (Title OR Keywords): {len(filtered_recent_publications)}")
 
     # Export to JSON file and return the list
     with open(path_str, 'w', encoding='utf-8') as f:
